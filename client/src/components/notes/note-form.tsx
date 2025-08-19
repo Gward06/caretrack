@@ -43,8 +43,7 @@ export default function NoteForm({ open, onClose }: NoteFormProps) {
   });
 
   const { data: clients = [] } = useQuery<Client[]>({
-    queryKey: ["/api/clients"],
-    queryParams: { caregiverId: user?.id },
+    queryKey: ["/api/clients", "caregiverId", user?.id],
     enabled: !!user?.id && !currentClient,
   });
 

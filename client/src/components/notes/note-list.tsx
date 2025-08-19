@@ -15,8 +15,7 @@ export default function NoteList() {
   const [showNoteForm, setShowNoteForm] = useState(false);
 
   const { data: notes = [], isLoading } = useQuery<CareNote[]>({
-    queryKey: ["/api/care-notes"],
-    queryParams: { caregiverId: user?.id },
+    queryKey: ["/api/care-notes", "caregiverId", user?.id],
     enabled: !!user?.id,
   });
 

@@ -11,8 +11,7 @@ interface ClientCardProps {
 
 export default function ClientCard({ client }: ClientCardProps) {
   const { data: visits = [] } = useQuery<Visit[]>({
-    queryKey: ["/api/visits"],
-    queryParams: { clientId: client.id },
+    queryKey: ["/api/visits", "clientId", client.id],
   });
 
   const lastVisit = visits.find(visit => visit.status === "completed");

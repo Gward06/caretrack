@@ -10,8 +10,7 @@ export default function ClientList() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const { data: clients = [], isLoading } = useQuery<Client[]>({
-    queryKey: ["/api/clients"],
-    queryParams: { caregiverId: user?.id },
+    queryKey: ["/api/clients", "caregiverId", user?.id],
     enabled: !!user?.id,
   });
 

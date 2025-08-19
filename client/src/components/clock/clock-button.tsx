@@ -29,8 +29,7 @@ export default function ClockButton() {
   const [clockOutNotes, setClockOutNotes] = useState("");
 
   const { data: clients = [] } = useQuery<Client[]>({
-    queryKey: ["/api/clients"],
-    queryParams: { caregiverId: user?.id },
+    queryKey: ["/api/clients", "caregiverId", user?.id],
     enabled: !!user?.id,
   });
 

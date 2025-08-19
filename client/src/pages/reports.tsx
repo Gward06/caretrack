@@ -8,6 +8,14 @@ import { format, subDays, subMonths } from "date-fns";
 
 type ReportPeriod = "week" | "month" | "custom";
 
+interface ReportData {
+  totalHours: number;
+  totalVisits: number;
+  clientsServed: number;
+  avgVisitTime: number;
+  dailyBreakdown: Record<string, { visits: number; hours: number }>;
+}
+
 export default function Reports() {
   const { user } = useAuth();
   const [selectedPeriod, setSelectedPeriod] = useState<ReportPeriod>("week");
@@ -32,12 +40,8 @@ export default function Reports() {
 
   const { startDate, endDate } = getDateRange();
 
-  const { data: reportData, isLoading } = useQuery({
-    queryKey: ["/api/reports/summary", user?.id, selectedPeriod],
-    queryParams: {
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-    },
+  const { data: reportData, isLoading } = useQuery<ReportData>({
+    queryKey: [`/api/reports/summary/${user?.id}`, "startDate", startDate.toISOString(), "endDate", endDate.toISOString()],
     enabled: !!user?.id,
   });
 
@@ -121,18 +125,18 @@ export default function Reports() {
           
           {reportData?.dailyBreakdown && Object.keys(reportData.dailyBreakdown).length > 0 ? (
             <div className="space-y-3">
-              {Object.entries(reportData.dailyBreakdown).map(([date, data]) => (
+              {Object.entries(reportData.dailyBreakdown).map(([date, dayData]) => (
                 <div key={date} className="flex items-center justify-between py-2 border-b border-gray-100">
                   <div>
                     <div className="font-medium">
                       {format(new Date(date), "EEEE, MMM d")}
                     </div>
-                    <div className="text-sm text-gray-600">{data.visits} visits</div>
+                    <div className="text-sm text-gray-600">{dayData.visits} visits</div>
                   </div>
                   <div className="text-right">
-                    <div className="font-medium">{data.hours.toFixed(1)}h</div>
+                    <div className="font-medium">{dayData.hours.toFixed(1)}h</div>
                     <div className="text-xs text-gray-500">
-                      ${(data.hours * 30).toFixed(2)}
+                      ${(dayData.hours * 30).toFixed(2)}
                     </div>
                   </div>
                 </div>

@@ -12,20 +12,17 @@ export default function Dashboard() {
   const { visitDuration } = useClock();
 
   const { data: visits = [] } = useQuery<Visit[]>({
-    queryKey: ["/api/visits"],
-    queryParams: { caregiverId: user?.id },
+    queryKey: ["/api/visits", "caregiverId", user?.id],
     enabled: !!user?.id,
   });
 
   const { data: clients = [] } = useQuery<Client[]>({
-    queryKey: ["/api/clients"],
-    queryParams: { caregiverId: user?.id },
+    queryKey: ["/api/clients", "caregiverId", user?.id],
     enabled: !!user?.id,
   });
 
   const { data: schedules = [] } = useQuery<Schedule[]>({
-    queryKey: ["/api/schedules"],
-    queryParams: { caregiverId: user?.id },
+    queryKey: ["/api/schedules", "caregiverId", user?.id],
     enabled: !!user?.id,
   });
 

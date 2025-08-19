@@ -113,7 +113,11 @@ export class MemStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
     const user: User = { 
-      ...insertUser, 
+      ...insertUser,
+      email: insertUser.email ?? null,
+      phone: insertUser.phone ?? null,
+      role: insertUser.role ?? "caregiver",
+      isActive: insertUser.isActive ?? true,
       id, 
       createdAt: new Date() 
     };
@@ -147,7 +151,17 @@ export class MemStorage implements IStorage {
   async createClient(insertClient: InsertClient): Promise<Client> {
     const id = randomUUID();
     const client: Client = { 
-      ...insertClient, 
+      ...insertClient,
+      phone: insertClient.phone ?? null,
+      age: insertClient.age ?? null,
+      emergencyContact: insertClient.emergencyContact ?? null,
+      emergencyPhone: insertClient.emergencyPhone ?? null,
+      medicalConditions: insertClient.medicalConditions ?? null,
+      medications: insertClient.medications ?? null,
+      allergies: insertClient.allergies ?? null,
+      specialInstructions: insertClient.specialInstructions ?? null,
+      caregiverIds: insertClient.caregiverIds ?? null,
+      isActive: insertClient.isActive ?? true,
       id, 
       createdAt: new Date() 
     };
@@ -192,7 +206,14 @@ export class MemStorage implements IStorage {
   async createVisit(insertVisit: InsertVisit): Promise<Visit> {
     const id = randomUUID();
     const visit: Visit = { 
-      ...insertVisit, 
+      ...insertVisit,
+      endTime: insertVisit.endTime ?? null,
+      duration: null, // Will be calculated when endTime is set
+      scheduledStartTime: insertVisit.scheduledStartTime ?? null,
+      scheduledEndTime: insertVisit.scheduledEndTime ?? null,
+      location: insertVisit.location ?? null,
+      status: insertVisit.status ?? "in_progress",
+      notes: insertVisit.notes ?? null,
       id, 
       createdAt: new Date() 
     };
@@ -285,7 +306,10 @@ export class MemStorage implements IStorage {
   async createSchedule(insertSchedule: InsertSchedule): Promise<Schedule> {
     const id = randomUUID();
     const schedule: Schedule = { 
-      ...insertSchedule, 
+      ...insertSchedule,
+      status: insertSchedule.status ?? "scheduled",
+      isRecurring: insertSchedule.isRecurring ?? false,
+      recurringPattern: insertSchedule.recurringPattern ?? null,
       id, 
       createdAt: new Date() 
     };
