@@ -1,7 +1,12 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import bcrypt from "bcrypt";
-import { storage } from "./storage";
+import { storage, getClientsByFamilyMember, getVisitTasks, createVisitTask, updateVisitTask,
+  bulkCreateVisitTasks, getCaregiverProfiles, getCaregiverProfileByUser, createCaregiverProfile,
+  updateCaregiverProfile, getReviews, createReview, getMessageThreads, createMessageThread,
+  getMessages, createMessage, markMessagesRead, getCareNotes, getVisits, updateClient,
+  createAgency } from "./storage";
+import { generateShiftTasks, generateCarePlan, getDailyHealthTip } from "./ai";
 import { insertUserSchema, insertClientSchema, insertVisitSchema, insertCareNoteSchema, insertScheduleSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -284,6 +289,268 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       res.status(500).json({ message: "Failed to generate report" });
     }
+  });
+
+  // ─── Visit Tasks ────────────────────────────────────────────────────────────
+
+  app.get("/api/visits/:visitId/tasks", async (req, res) => {
+    try {
+      const tasks = await getVisitTasks(req.params.visitId);
+      res.json(tasks);
+    } catch { res.status(500).json({ message: "Failed to fetch tasks" }); }
+  });
+
+  app.post("/api/visits/:visitId/tasks", async (req, res) => {
+    try {
+      const task = await createVisitTask({ ...req.body, visitId: req.params.visitId });
+      res.status(201).json(task);
+    } catch { res.status(500).json({ message: "Failed to create task" }); }
+  });
+
+  app.patch("/api/visit-tasks/:id", async (req, res) => {
+    try {
+      const task = await updateVisitTask(req.params.id, req.body);
+      res.json(task);
+    } catch { res.status(500).json({ message: "Failed to update task" }); }
+  });
+
+  // AI: generate tasks for a visit based on client conditions
+  app.post("/api/visits/:visitId/tasks/generate", async (req, res) => {
+    try {
+      const visit = await storage.getVisit(req.params.visitId);
+      if (!visit) return res.status(404).json({ message: "Visit not found" });
+
+      const client = await storage.getClient(visit.clientId);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+
+      const shiftDuration = req.body.shiftDurationMinutes || 240;
+      const aiTasks = await generateShiftTasks(client, shiftDuration);
+
+      const tasks = await bulkCreateVisitTasks(
+        aiTasks.map(t => ({
+          visitId: req.params.visitId,
+          title: t.title,
+          category: t.category,
+          completed: false,
+          aiGenerated: true,
+          notes: t.rationale,
+        }))
+      );
+      res.status(201).json(tasks);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to generate tasks" });
+    }
+  });
+
+  // ─── AI Care Plan ────────────────────────────────────────────────────────────
+
+  app.get("/api/clients/:id/care-plan", async (req, res) => {
+    try {
+      const client = await storage.getClient(req.params.id);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+
+      // Return cached plan if recent (< 7 days)
+      if (client.aiCarePlan) {
+        const plan = client.aiCarePlan as any;
+        const age = Date.now() - new Date(plan.generatedAt).getTime();
+        if (age < 7 * 24 * 60 * 60 * 1000) return res.json(plan);
+      }
+
+      const plan = await generateCarePlan(client);
+      await updateClient(req.params.id, { aiCarePlan: plan });
+      res.json(plan);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to generate care plan" });
+    }
+  });
+
+  app.get("/api/clients/:id/daily-tip", async (req, res) => {
+    try {
+      const client = await storage.getClient(req.params.id);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+      const tip = await getDailyHealthTip(client.medicalConditions || []);
+      res.json({ tip });
+    } catch { res.status(500).json({ message: "Failed to get tip" }); }
+  });
+
+  // ─── Family Portal ───────────────────────────────────────────────────────────
+
+  // Get all clients for a family member user
+  app.get("/api/family/clients", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const myClients = await getClientsByFamilyMember(userId);
+      res.json(myClients);
+    } catch { res.status(500).json({ message: "Failed to fetch family clients" }); }
+  });
+
+  // Family view of care notes (only visible_to_family=true)
+  app.get("/api/family/clients/:clientId/notes", async (req, res) => {
+    try {
+      const notes = await getCareNotes(undefined, req.params.clientId, true);
+      res.json(notes);
+    } catch { res.status(500).json({ message: "Failed to fetch notes" }); }
+  });
+
+  // Family view of visits with tasks
+  app.get("/api/family/clients/:clientId/visits", async (req, res) => {
+    try {
+      const clientVisits = await getVisits(undefined, req.params.clientId);
+      const visitsWithTasks = await Promise.all(
+        clientVisits.map(async v => ({
+          ...v,
+          tasks: await getVisitTasks(v.id),
+        }))
+      );
+      res.json(visitsWithTasks);
+    } catch { res.status(500).json({ message: "Failed to fetch visits" }); }
+  });
+
+  // Family approves or disputes a visit time entry
+  app.patch("/api/family/visits/:visitId/approve", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const { approved } = req.body;
+      const visit = await storage.updateVisit(req.params.visitId, {
+        familyApproved: approved,
+        familyApprovedAt: new Date(),
+        familyApprovedBy: userId,
+      });
+      res.json(visit);
+    } catch { res.status(500).json({ message: "Failed to update approval" }); }
+  });
+
+  // ─── Caregiver Marketplace ───────────────────────────────────────────────────
+
+  app.get("/api/marketplace/caregivers", async (req, res) => {
+    try {
+      const { specializations, city, state, maxRate } = req.query;
+      const profiles = await getCaregiverProfiles({
+        specializations: specializations ? (specializations as string).split(",") : undefined,
+        city: city as string,
+        state: state as string,
+        maxRate: maxRate ? Number(maxRate) : undefined,
+      });
+      res.json(profiles);
+    } catch { res.status(500).json({ message: "Failed to fetch caregivers" }); }
+  });
+
+  app.get("/api/marketplace/caregivers/:id", async (req, res) => {
+    try {
+      const [profile] = await getCaregiverProfiles();
+      // fetch by id — refetch cleanly
+      const { db } = await import("./storage");
+      const { caregiverProfiles } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const [p] = await db.select().from(caregiverProfiles).where(eq(caregiverProfiles.id, req.params.id));
+      if (!p) return res.status(404).json({ message: "Profile not found" });
+      const profileReviews = await getReviews(p.id);
+      res.json({ ...p, reviews: profileReviews });
+    } catch { res.status(500).json({ message: "Failed to fetch profile" }); }
+  });
+
+  app.get("/api/my/caregiver-profile", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const profile = await getCaregiverProfileByUser(userId);
+      res.json(profile || null);
+    } catch { res.status(500).json({ message: "Failed to fetch profile" }); }
+  });
+
+  app.post("/api/my/caregiver-profile", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const existing = await getCaregiverProfileByUser(userId);
+      if (existing) {
+        const updated = await updateCaregiverProfile(existing.id, req.body);
+        return res.json(updated);
+      }
+      const profile = await createCaregiverProfile({ ...req.body, userId });
+      res.status(201).json(profile);
+    } catch { res.status(500).json({ message: "Failed to save profile" }); }
+  });
+
+  app.post("/api/marketplace/caregivers/:profileId/reviews", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const review = await createReview({
+        ...req.body,
+        caregiverProfileId: req.params.profileId,
+        reviewerId: userId,
+        reviewerRole: user.role,
+      });
+      res.status(201).json(review);
+    } catch { res.status(500).json({ message: "Failed to create review" }); }
+  });
+
+  // ─── Messaging ───────────────────────────────────────────────────────────────
+
+  app.get("/api/messages/threads", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const threads = await getMessageThreads(userId);
+      res.json(threads);
+    } catch { res.status(500).json({ message: "Failed to fetch threads" }); }
+  });
+
+  app.post("/api/messages/threads", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const thread = await createMessageThread({
+        ...req.body,
+        participantIds: Array.from(new Set([userId, ...(req.body.participantIds || [])])),
+      });
+      res.status(201).json(thread);
+    } catch { res.status(500).json({ message: "Failed to create thread" }); }
+  });
+
+  app.get("/api/messages/threads/:threadId", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const msgs = await getMessages(req.params.threadId, user.role);
+      await markMessagesRead(req.params.threadId, userId);
+      res.json(msgs);
+    } catch { res.status(500).json({ message: "Failed to fetch messages" }); }
+  });
+
+  app.post("/api/messages/threads/:threadId", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      const msg = await createMessage({
+        threadId: req.params.threadId,
+        senderId: userId,
+        body: req.body.body,
+        visibleToRoles: req.body.visibleToRoles || ["caregiver", "family", "agency_admin"],
+        readBy: [userId],
+      });
+      res.status(201).json(msg);
+    } catch { res.status(500).json({ message: "Failed to send message" }); }
+  });
+
+  // ─── Agencies ────────────────────────────────────────────────────────────────
+
+  app.post("/api/agencies", async (req, res) => {
+    try {
+      const agency = await createAgency(req.body);
+      res.status(201).json(agency);
+    } catch { res.status(500).json({ message: "Failed to create agency" }); }
   });
 
   const httpServer = createServer(app);

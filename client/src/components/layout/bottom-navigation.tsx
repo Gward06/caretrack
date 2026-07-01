@@ -1,55 +1,68 @@
 import { useLocation } from "wouter";
-import { useClock } from "@/hooks/use-clock";
+import { Home, Users, FileText, BarChart2, CheckSquare, Heart, Search } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
 import ClockButton from "../clock/clock-button";
 
 export default function BottomNavigation() {
   const [location, setLocation] = useLocation();
-  const { isClocked } = useClock();
+  const { user } = useAuth();
 
-  const navItems = [
-    { path: "/", icon: "fas fa-home", label: "Dashboard" },
-    { path: "/clients", icon: "fas fa-users", label: "Clients" },
-    { path: "/notes", icon: "fas fa-sticky-note", label: "Notes" },
-    { path: "/reports", icon: "fas fa-chart-bar", label: "Reports" },
+  const isActive = (path: string) =>
+    path === "/" ? location === "/" : location.startsWith(path);
+
+  // Nav items change based on role
+  const caregiverNav = [
+    { path: "/", icon: Home, label: "Home" },
+    { path: "/clients", icon: Users, label: "Clients" },
+    // clock button goes here (center)
+    { path: "/tasks", icon: CheckSquare, label: "Tasks" },
+    { path: "/reports", icon: BarChart2, label: "Reports" },
   ];
 
-  const isActive = (path: string) => {
-    if (path === "/" && location === "/") return true;
-    if (path !== "/" && location.startsWith(path)) return true;
-    return false;
-  };
+  const familyNav = [
+    { path: "/", icon: Home, label: "Home" },
+    { path: "/family", icon: Heart, label: "My Care" },
+    { path: "/marketplace", icon: Search, label: "Find Care" },
+    { path: "/notes", icon: FileText, label: "Notes" },
+  ];
+
+  const navItems = user?.role === "family" ? familyNav : caregiverNav;
+  const showClockButton = user?.role !== "family";
+  const leftItems = showClockButton ? navItems.slice(0, 2) : navItems;
+  const rightItems = showClockButton ? navItems.slice(2) : [];
 
   return (
-    <nav className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-[414px] bg-white border-t border-gray-200">
-      <div className="flex items-center justify-around py-2">
-        {navItems.slice(0, 2).map((item) => (
-          <button
-            key={item.path}
-            onClick={() => setLocation(item.path)}
-            className="flex flex-col items-center py-2 px-3"
-          >
-            <i className={`${item.icon} text-lg ${isActive(item.path) ? 'text-primary' : 'text-gray-400'}`}></i>
-            <span className={`text-xs ${isActive(item.path) ? 'text-primary font-medium' : 'text-gray-400'}`}>
-              {item.label}
-            </span>
-          </button>
-        ))}
+    <nav className="fixed bottom-0 left-1/2 transform -translate-x-1/2 w-full max-w-[414px] bg-slate-900 border-t border-slate-800 z-50">
+      <div className="flex items-center justify-around py-2 px-2">
+        {leftItems.map(item => {
+          const Icon = item.icon;
+          const active = isActive(item.path);
+          return (
+            <button key={item.path} onClick={() => setLocation(item.path)}
+              className="flex flex-col items-center py-1.5 px-3 min-w-0">
+              <Icon size={20} className={active ? "text-emerald-400" : "text-slate-500"} />
+              <span className={`text-xs mt-0.5 ${active ? "text-emerald-400 font-medium" : "text-slate-500"}`}>
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
 
-        {/* Central Clock Button */}
-        <ClockButton />
+        {showClockButton && <ClockButton />}
 
-        {navItems.slice(2).map((item) => (
-          <button
-            key={item.path}
-            onClick={() => setLocation(item.path)}
-            className="flex flex-col items-center py-2 px-3"
-          >
-            <i className={`${item.icon} text-lg ${isActive(item.path) ? 'text-primary' : 'text-gray-400'}`}></i>
-            <span className={`text-xs ${isActive(item.path) ? 'text-primary font-medium' : 'text-gray-400'}`}>
-              {item.label}
-            </span>
-          </button>
-        ))}
+        {rightItems.map(item => {
+          const Icon = item.icon;
+          const active = isActive(item.path);
+          return (
+            <button key={item.path} onClick={() => setLocation(item.path)}
+              className="flex flex-col items-center py-1.5 px-3 min-w-0">
+              <Icon size={20} className={active ? "text-emerald-400" : "text-slate-500"} />
+              <span className={`text-xs mt-0.5 ${active ? "text-emerald-400 font-medium" : "text-slate-500"}`}>
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </nav>
   );
