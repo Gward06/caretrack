@@ -1,29 +1,45 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import bcrypt from "bcrypt";
 import { storage } from "./storage";
 import { insertUserSchema, insertClientSchema, insertVisitSchema, insertCareNoteSchema, insertScheduleSchema } from "@shared/schema";
 import { z } from "zod";
+
+const BCRYPT_ROUNDS = 12;
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication routes
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { username, password } = req.body;
-      
       if (!username || !password) {
         return res.status(400).json({ message: "Username and password required" });
       }
-
       const user = await storage.getUserByUsername(username);
-      if (!user || user.password !== password) {
+      if (!user) {
         return res.status(401).json({ message: "Invalid credentials" });
       }
-
-      // In a real app, you'd use proper session management
+      const valid = await bcrypt.compare(password, user.password);
+      if (!valid) {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+      (req.session as any).userId = user.id;
       res.json({ user: { ...user, password: undefined } });
     } catch (error) {
       res.status(500).json({ message: "Login failed" });
     }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy(() => res.json({ ok: true }));
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    const userId = (req.session as any).userId;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const user = await storage.getUser(userId);
+    if (!user) return res.status(401).json({ message: "Not authenticated" });
+    res.json({ ...user, password: undefined });
   });
 
   // User routes
@@ -42,6 +58,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/users", async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);
+      userData.password = await bcrypt.hash(userData.password, BCRYPT_ROUNDS);
       const user = await storage.createUser(userData);
       res.status(201).json({ ...user, password: undefined });
     } catch (error) {
