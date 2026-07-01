@@ -4,10 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, XCircle, Clock, MapPin, Lightbulb, Heart, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  CheckCircle, XCircle, Clock, MapPin, Lightbulb, Heart,
+  ChevronDown, ChevronUp, Salad, FlaskConical, Leaf, UtensilsCrossed,
+} from "lucide-react";
 import { format } from "date-fns";
 
-function tipCard(tip: string) {
+function TipCard({ tip }: { tip: string }) {
   return (
     <Card className="border-purple-500/30 bg-purple-500/5 mb-4">
       <CardContent className="pt-4 flex gap-3">
@@ -34,7 +37,7 @@ function VisitCard({ visit }: { visit: any }) {
 
   const completedTasks = visit.tasks?.filter((t: any) => t.completed).length || 0;
   const totalTasks = visit.tasks?.length || 0;
-  const completionPct = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const pct = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   return (
     <Card className="mb-3 border-slate-700/50">
@@ -72,7 +75,7 @@ function VisitCard({ visit }: { visit: any }) {
               <span className="text-slate-300">{completedTasks}/{totalTasks}</span>
             </div>
             <div className="h-1.5 bg-slate-700 rounded-full">
-              <div className="h-1.5 bg-emerald-500 rounded-full transition-all" style={{ width: `${completionPct}%` }} />
+              <div className="h-1.5 bg-emerald-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
             </div>
           </div>
         )}
@@ -103,6 +106,153 @@ function VisitCard({ visit }: { visit: any }) {
   );
 }
 
+function NutritionTab({ clientId }: { clientId: string }) {
+  const { data: plan, isLoading } = useQuery<any>({
+    queryKey: ["nutrition-plan", clientId],
+    queryFn: () => fetch(`/api/clients/${clientId}/nutrition-plan`).then(r => r.json()),
+    staleTime: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  if (isLoading) return (
+    <div className="space-y-3 py-4">
+      {[1, 2, 3].map(i => <div key={i} className="h-20 bg-slate-800/50 rounded-lg animate-pulse" />)}
+    </div>
+  );
+
+  if (!plan || !plan.overview) return (
+    <p className="text-sm text-slate-400 text-center py-8">Add medical conditions to the client profile to generate a nutrition plan.</p>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Overview */}
+      <Card className="border-emerald-500/20 bg-emerald-500/5">
+        <CardContent className="pt-4">
+          <div className="flex gap-2 items-start">
+            <Salad className="text-emerald-400 shrink-0 mt-0.5" size={16} />
+            <p className="text-sm text-emerald-200">{plan.overview}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Foods to Emphasize */}
+      {plan.foodsToEmphasize?.length > 0 && (
+        <Card className="border-slate-700/50">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Salad size={14} className="text-green-400" /> Eat More Of</CardTitle></CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {plan.foodsToEmphasize.map((f: string, i: number) => (
+                <li key={i} className="flex gap-2 text-sm text-slate-300">
+                  <span className="text-green-400 mt-0.5 shrink-0">✓</span>{f}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Foods to Limit */}
+      {plan.foodsToLimit?.length > 0 && (
+        <Card className="border-slate-700/50">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><UtensilsCrossed size={14} className="text-amber-400" /> Limit or Avoid</CardTitle></CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {plan.foodsToLimit.map((f: string, i: number) => (
+                <li key={i} className="flex gap-2 text-sm text-slate-300">
+                  <span className="text-amber-400 mt-0.5 shrink-0">–</span>{f}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Supplements */}
+      {plan.supplements?.length > 0 && (
+        <Card className="border-slate-700/50">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><FlaskConical size={14} className="text-blue-400" /> Supplements</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {plan.supplements.map((s: any, i: number) => (
+                <div key={i} className="border-b border-slate-700/50 pb-3 last:border-0 last:pb-0">
+                  <div className="font-medium text-sm text-blue-300">{s.name}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">{s.benefit}</div>
+                  {s.note && <div className="text-xs text-amber-400/80 mt-1 italic">{s.note}</div>}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Natural Remedies */}
+      {plan.naturalRemedies?.length > 0 && (
+        <Card className="border-slate-700/50">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Leaf size={14} className="text-emerald-400" /> Natural Remedies</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {plan.naturalRemedies.map((r: any, i: number) => (
+                <div key={i} className="border-b border-slate-700/50 pb-3 last:border-0 last:pb-0">
+                  <div className="font-medium text-sm text-emerald-300">{r.name}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">{r.use}</div>
+                  <div className="text-xs text-slate-300 mt-1 bg-slate-800/60 rounded p-2">{r.howTo}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recipes */}
+      {plan.recipes?.length > 0 && (
+        <Card className="border-slate-700/50">
+          <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2">🍲 Recipes</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {plan.recipes.map((r: any, i: number) => (
+                <RecipeCard key={i} recipe={r} />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function RecipeCard({ recipe }: { recipe: any }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-slate-700/50 rounded-lg p-3">
+      <button className="w-full text-left" onClick={() => setOpen(!open)}>
+        <div className="flex items-center justify-between">
+          <span className="font-medium text-sm text-slate-200">{recipe.name}</span>
+          {open ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
+        </div>
+        <p className="text-xs text-slate-400 mt-0.5">{recipe.benefits}</p>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-3">
+          {recipe.ingredients?.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Ingredients</div>
+              <ul className="space-y-1">
+                {recipe.ingredients.map((ing: string, i: number) => (
+                  <li key={i} className="text-xs text-slate-300 flex gap-1.5"><span className="text-emerald-500">·</span>{ing}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Instructions</div>
+            <p className="text-xs text-slate-300 leading-relaxed">{recipe.instructions}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FamilyPortal() {
   const { data: myClients = [] } = useQuery<any[]>({
     queryKey: ["family-clients"],
@@ -128,6 +278,7 @@ export default function FamilyPortal() {
     queryKey: ["care-plan", client?.id],
     queryFn: () => fetch(`/api/clients/${client.id}/care-plan`).then(r => r.json()),
     enabled: !!client?.id,
+    staleTime: 7 * 24 * 60 * 60 * 1000,
   });
 
   const { data: tipData } = useQuery<{ tip: string }>({
@@ -149,7 +300,6 @@ export default function FamilyPortal() {
 
   return (
     <div className="pb-24 px-4 pt-4">
-      {/* Client selector */}
       {myClients.length > 1 && (
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
           {myClients.map((c: any) => (
@@ -165,19 +315,13 @@ export default function FamilyPortal() {
         </div>
       )}
 
-      {/* Daily tip */}
-      {tipData?.tip && tipCard(tipData.tip)}
+      {tipData?.tip && <TipCard tip={tipData.tip} />}
 
-      {/* Client info */}
       {client && (
         <Card className="mb-4 border-slate-700/50">
           <CardContent className="pt-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <div className="font-semibold">{client.name}</div>
-                <div className="text-xs text-slate-400 mt-0.5">{client.age ? `Age ${client.age}` : ""}</div>
-              </div>
-            </div>
+            <div className="font-semibold">{client.name}</div>
+            {client.age && <div className="text-xs text-slate-400 mt-0.5">Age {client.age}</div>}
             {client.medicalConditions?.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {client.medicalConditions.map((c: string) => (
@@ -190,10 +334,11 @@ export default function FamilyPortal() {
       )}
 
       <Tabs defaultValue="visits">
-        <TabsList className="w-full mb-4">
-          <TabsTrigger value="visits" className="flex-1">Visits</TabsTrigger>
-          <TabsTrigger value="notes" className="flex-1">Notes</TabsTrigger>
-          <TabsTrigger value="care-plan" className="flex-1">Care Plan</TabsTrigger>
+        <TabsList className="w-full mb-4 grid grid-cols-4">
+          <TabsTrigger value="visits">Visits</TabsTrigger>
+          <TabsTrigger value="notes">Notes</TabsTrigger>
+          <TabsTrigger value="nutrition">Nutrition</TabsTrigger>
+          <TabsTrigger value="care-plan">Plan</TabsTrigger>
         </TabsList>
 
         <TabsContent value="visits">
@@ -221,6 +366,10 @@ export default function FamilyPortal() {
           }
         </TabsContent>
 
+        <TabsContent value="nutrition">
+          {client && <NutritionTab clientId={client.id} />}
+        </TabsContent>
+
         <TabsContent value="care-plan">
           {!carePlan
             ? <p className="text-sm text-slate-400 text-center py-8">Generating care plan…</p>
@@ -237,8 +386,7 @@ export default function FamilyPortal() {
                       <ul className="space-y-2">
                         {carePlan.goals.map((g: string, i: number) => (
                           <li key={i} className="flex gap-2 text-sm text-slate-300">
-                            <CheckCircle size={14} className="text-emerald-400 mt-0.5 shrink-0" />
-                            {g}
+                            <CheckCircle size={14} className="text-emerald-400 mt-0.5 shrink-0" />{g}
                           </li>
                         ))}
                       </ul>
@@ -252,7 +400,7 @@ export default function FamilyPortal() {
                       <ul className="space-y-2">
                         {carePlan.resources.map((r: string, i: number) => (
                           <li key={i} className="text-sm text-slate-300 flex gap-2">
-                            <span className="text-purple-400">→</span> {r}
+                            <span className="text-purple-400 shrink-0">→</span>{r}
                           </li>
                         ))}
                       </ul>

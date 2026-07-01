@@ -6,7 +6,7 @@ import { storage, getClientsByFamilyMember, getVisitTasks, createVisitTask, upda
   updateCaregiverProfile, getReviews, createReview, getMessageThreads, createMessageThread,
   getMessages, createMessage, markMessagesRead, getCareNotes, getVisits, updateClient,
   createAgency } from "./storage";
-import { generateShiftTasks, generateCarePlan, getDailyHealthTip } from "./ai";
+import { generateShiftTasks, generateCarePlan, generateNutritionPlan, getDailyHealthTip } from "./ai";
 import { insertUserSchema, insertClientSchema, insertVisitSchema, insertCareNoteSchema, insertScheduleSchema } from "@shared/schema";
 import { z } from "zod";
 
@@ -363,6 +363,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: "Failed to generate care plan" });
+    }
+  });
+
+  app.get("/api/clients/:id/nutrition-plan", async (req, res) => {
+    try {
+      const client = await storage.getClient(req.params.id);
+      if (!client) return res.status(404).json({ message: "Client not found" });
+      // Nutrition plan is part of care plan cache — regenerate standalone if needed
+      const cached = client.aiCarePlan as any;
+      if (cached?.nutrition?.generatedAt) {
+        const age = Date.now() - new Date(cached.nutrition.generatedAt).getTime();
+        if (age < 7 * 24 * 60 * 60 * 1000) return res.json(cached.nutrition);
+      }
+      const plan = await generateNutritionPlan(client);
+      // Merge into existing care plan cache
+      const updated = { ...(cached || {}), nutrition: plan };
+      await updateClient(req.params.id, { aiCarePlan: updated });
+      res.json(plan);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to generate nutrition plan" });
     }
   });
 
