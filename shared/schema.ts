@@ -27,6 +27,12 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("caregiver"),
   agencyId: varchar("agency_id").references(() => agencies.id),
   isActive: boolean("is_active").notNull().default(true),
+  // Stripe billing
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStatus: text("subscription_status").default("inactive"), // inactive | active | past_due | canceled
+  subscriptionPlan: text("subscription_plan"), // family_monthly | caregiver_monthly
+  subscriptionCurrentPeriodEnd: timestamp("subscription_current_period_end"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

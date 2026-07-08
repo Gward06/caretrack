@@ -1,6 +1,7 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import bcrypt from "bcrypt";
+import { stripe, PLANS, type PlanKey } from "./stripe";
 import { storage, getClientsByFamilyMember, getVisitTasks, createVisitTask, updateVisitTask,
   bulkCreateVisitTasks, getCaregiverProfiles, getCaregiverProfileByUser, createCaregiverProfile,
   updateCaregiverProfile, getReviews, createReview, getMessageThreads, createMessageThread,
@@ -572,6 +573,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const agency = await createAgency(req.body);
       res.status(201).json(agency);
     } catch { res.status(500).json({ message: "Failed to create agency" }); }
+  });
+
+  // ─── Stripe Billing ───────────────────────────────────────────────────────────
+
+  // POST /api/billing/checkout — create Stripe Checkout session
+  app.post("/api/billing/checkout", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+      const { plan } = req.body as { plan: PlanKey };
+      if (!PLANS[plan]) return res.status(400).json({ message: "Invalid plan" });
+
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+
+      // Create or reuse Stripe customer
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user.email || undefined,
+          name: user.name,
+          metadata: { userId },
+        });
+        customerId = customer.id;
+        await storage.updateUser(userId, { stripeCustomerId: customerId });
+      }
+
+      const appUrl = process.env.APP_URL || "http://localhost:5000";
+      const session = await stripe.checkout.sessions.create({
+        customer: customerId,
+        mode: "subscription",
+        line_items: [{ price: PLANS[plan].priceId, quantity: 1 }],
+        success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appUrl}/billing/cancel`,
+        metadata: { userId, plan },
+      });
+
+      res.json({ url: session.url });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/billing/status — current user's subscription info
+  app.get("/api/billing/status", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      res.json({
+        status: user.subscriptionStatus || "inactive",
+        plan: user.subscriptionPlan || null,
+        currentPeriodEnd: user.subscriptionCurrentPeriodEnd || null,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/billing/portal — Stripe customer portal (manage/cancel)
+  app.post("/api/billing/portal", async (req, res) => {
+    try {
+      const userId = (req.session as any).userId;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user?.stripeCustomerId) return res.status(400).json({ message: "No billing account found" });
+
+      const appUrl = process.env.APP_URL || "http://localhost:5000";
+      const session = await stripe.billingPortal.sessions.create({
+        customer: user.stripeCustomerId,
+        return_url: `${appUrl}/dashboard`,
+      });
+      res.json({ url: session.url });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/webhooks/stripe — handle subscription lifecycle events
+  app.post("/api/webhooks/stripe", async (req, res) => {
+    const sig = req.headers["stripe-signature"] as string;
+    let event;
+    try {
+      event = stripe.webhooks.constructEvent(
+        (req as any).rawBody || req.body,
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET!
+      );
+    } catch (err: any) {
+      return res.status(400).json({ message: `Webhook error: ${err.message}` });
+    }
+
+    const sub = (event.data.object as any);
+
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const userId = sub.metadata?.userId;
+        const plan = sub.metadata?.plan as PlanKey;
+        if (userId && plan) {
+          await storage.updateUser(userId, {
+            stripeSubscriptionId: sub.subscription,
+            subscriptionStatus: "active",
+            subscriptionPlan: plan,
+          });
+        }
+        break;
+      }
+      case "customer.subscription.updated": {
+        const customer = await stripe.customers.retrieve(sub.customer) as any;
+        const userId = customer.metadata?.userId;
+        if (userId) {
+          await storage.updateUser(userId, {
+            subscriptionStatus: sub.status,
+            subscriptionCurrentPeriodEnd: new Date(sub.current_period_end * 1000),
+          });
+        }
+        break;
+      }
+      case "customer.subscription.deleted": {
+        const customer = await stripe.customers.retrieve(sub.customer) as any;
+        const userId = customer.metadata?.userId;
+        if (userId) {
+          await storage.updateUser(userId, {
+            subscriptionStatus: "canceled",
+            stripeSubscriptionId: null,
+            subscriptionPlan: null,
+          });
+        }
+        break;
+      }
+    }
+
+    res.json({ received: true });
   });
 
   const httpServer = createServer(app);
