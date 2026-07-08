@@ -18,7 +18,7 @@ await db.insert(users).values({
   password: hashed,
   name: "George Ward",
   email: "admin@care-chain.com",
-  role: "admin",
+  role: "platform_admin",
   isActive: true,
 }).onConflictDoNothing();
 

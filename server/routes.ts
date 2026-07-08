@@ -2,7 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import bcrypt from "bcrypt";
 import { stripe, PLANS, type PlanKey } from "./stripe";
-import { storage, getClientsByFamilyMember, getVisitTasks, createVisitTask, updateVisitTask,
+import { requireAuth, requireRole, requireAdmin } from "./middleware";
+import { storage, getAllUsers, getClientsByFamilyMember, getVisitTasks, createVisitTask, updateVisitTask,
   bulkCreateVisitTasks, getCaregiverProfiles, getCaregiverProfileByUser, createCaregiverProfile,
   updateCaregiverProfile, getReviews, createReview, getMessageThreads, createMessageThread,
   getMessages, createMessage, markMessagesRead, getCareNotes, getVisits, updateClient,
@@ -397,54 +398,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch { res.status(500).json({ message: "Failed to get tip" }); }
   });
 
-  // ─── Family Portal ───────────────────────────────────────────────────────────
+  // ─── Family Portal (family + platform_admin only) ────────────────────────────
 
-  // Get all clients for a family member user
-  app.get("/api/family/clients", async (req, res) => {
-    try {
-      const userId = (req.session as any).userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const myClients = await getClientsByFamilyMember(userId);
-      res.json(myClients);
-    } catch { res.status(500).json({ message: "Failed to fetch family clients" }); }
-  });
+  app.get("/api/family/clients",
+    requireRole("family"),
+    async (req, res) => {
+      try {
+        const userId = (req.session as any).userId;
+        const myClients = await getClientsByFamilyMember(userId);
+        res.json(myClients);
+      } catch { res.status(500).json({ message: "Failed to fetch family clients" }); }
+    });
 
-  // Family view of care notes (only visible_to_family=true)
-  app.get("/api/family/clients/:clientId/notes", async (req, res) => {
-    try {
-      const notes = await getCareNotes(undefined, req.params.clientId, true);
-      res.json(notes);
-    } catch { res.status(500).json({ message: "Failed to fetch notes" }); }
-  });
+  app.get("/api/family/clients/:clientId/notes",
+    requireRole("family"),
+    async (req, res) => {
+      try {
+        const notes = await getCareNotes(undefined, req.params.clientId, true);
+        res.json(notes);
+      } catch { res.status(500).json({ message: "Failed to fetch notes" }); }
+    });
 
-  // Family view of visits with tasks
-  app.get("/api/family/clients/:clientId/visits", async (req, res) => {
-    try {
-      const clientVisits = await getVisits(undefined, req.params.clientId);
-      const visitsWithTasks = await Promise.all(
-        clientVisits.map(async v => ({
-          ...v,
-          tasks: await getVisitTasks(v.id),
-        }))
-      );
-      res.json(visitsWithTasks);
-    } catch { res.status(500).json({ message: "Failed to fetch visits" }); }
-  });
+  app.get("/api/family/clients/:clientId/visits",
+    requireRole("family"),
+    async (req, res) => {
+      try {
+        const clientVisits = await getVisits(undefined, req.params.clientId);
+        const visitsWithTasks = await Promise.all(
+          clientVisits.map(async v => ({ ...v, tasks: await getVisitTasks(v.id) }))
+        );
+        res.json(visitsWithTasks);
+      } catch { res.status(500).json({ message: "Failed to fetch visits" }); }
+    });
 
-  // Family approves or disputes a visit time entry
-  app.patch("/api/family/visits/:visitId/approve", async (req, res) => {
-    try {
-      const userId = (req.session as any).userId;
-      if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const { approved } = req.body;
-      const visit = await storage.updateVisit(req.params.visitId, {
-        familyApproved: approved,
-        familyApprovedAt: new Date(),
-        familyApprovedBy: userId,
-      });
-      res.json(visit);
-    } catch { res.status(500).json({ message: "Failed to update approval" }); }
-  });
+  app.patch("/api/family/visits/:visitId/approve",
+    requireRole("family"),
+    async (req, res) => {
+      try {
+        const userId = (req.session as any).userId;
+        const visit = await storage.updateVisit(req.params.visitId, {
+          familyApproved: req.body.approved,
+          familyApprovedAt: new Date(),
+          familyApprovedBy: userId,
+        });
+        res.json(visit);
+      } catch { res.status(500).json({ message: "Failed to update approval" }); }
+    });
 
   // ─── Caregiver Marketplace ───────────────────────────────────────────────────
 
@@ -573,6 +572,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const agency = await createAgency(req.body);
       res.status(201).json(agency);
     } catch { res.status(500).json({ message: "Failed to create agency" }); }
+  });
+
+  // ─── Platform Admin ──────────────────────────────────────────────────────────
+  // All routes here require platform_admin role.
+
+  // List all users (with optional role filter)
+  app.get("/api/admin/users", requireAdmin, async (req, res) => {
+    try {
+      const { role } = req.query;
+      let allUsers = await getAllUsers();
+      if (role) allUsers = allUsers.filter(u => u.role === role);
+      res.json(allUsers.map(u => ({ ...u, password: undefined })));
+    } catch { res.status(500).json({ message: "Failed to fetch users" }); }
+  });
+
+  // Update a user's role or active status
+  app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const allowed = ["role", "isActive", "name", "email"] as const;
+      const updates: Record<string, any> = {};
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) updates[key] = req.body[key];
+      }
+      const user = await storage.updateUser(req.params.id, updates);
+      res.json({ ...user, password: undefined });
+    } catch { res.status(500).json({ message: "Failed to update user" }); }
+  });
+
+  // Platform metrics overview
+  app.get("/api/admin/metrics", requireAdmin, async (req, res) => {
+    try {
+      const allUsers = await getAllUsers();
+      const allClients = await storage.getClients();
+      const metrics = {
+        totalUsers: allUsers.length,
+        byRole: {
+          platform_admin:        allUsers.filter(u => u.role === "platform_admin").length,
+          agency_admin:          allUsers.filter(u => u.role === "agency_admin").length,
+          caregiver:             allUsers.filter(u => u.role === "caregiver").length,
+          independent_caregiver: allUsers.filter(u => u.role === "independent_caregiver").length,
+          family:                allUsers.filter(u => u.role === "family").length,
+        },
+        activeSubscriptions: allUsers.filter(u => u.subscriptionStatus === "active").length,
+        totalClients: allClients.length,
+      };
+      res.json(metrics);
+    } catch { res.status(500).json({ message: "Failed to fetch metrics" }); }
   });
 
   // ─── Stripe Billing ───────────────────────────────────────────────────────────

@@ -61,6 +61,10 @@ export async function updateUser(id: string, updates: Partial<User>) {
   return u;
 }
 
+export async function getAllUsers() {
+  return db.select().from(users).orderBy(users.createdAt);
+}
+
 // ─── Clients ───────────────────────────────────────────────────────────────────
 
 export async function getClients(caregiverId?: string, agencyId?: string) {
@@ -309,7 +313,7 @@ export async function markMessagesRead(threadId: string, userId: string) {
 
 // legacy compat shim used by old routes
 export const storage = {
-  getUser, getUserByUsername, createUser, updateUser,
+  getUser, getUserByUsername, createUser, updateUser, getAllUsers,
   getClients: (caregiverId?: string) => getClients(caregiverId),
   getClient, createClient, updateClient,
   getVisits, getVisit, getCurrentVisit, createVisit, updateVisit,

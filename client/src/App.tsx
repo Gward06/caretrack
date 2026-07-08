@@ -12,6 +12,7 @@ import Reports from "@/pages/reports";
 import ShiftTasks from "@/pages/shift-tasks";
 import FamilyPortal from "@/pages/family-portal";
 import Marketplace from "@/pages/marketplace";
+import AdminPanel from "@/pages/admin";
 import Login from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { Heart } from "lucide-react";
@@ -45,6 +46,7 @@ function AuthenticatedApp() {
         <Route path="/tasks" component={ShiftTasks} />
         <Route path="/family" component={FamilyPortal} />
         <Route path="/marketplace" component={Marketplace} />
+        <Route path="/admin" component={AdminPanel} />
         <Route component={NotFound} />
       </Switch>
     </MobileLayout>

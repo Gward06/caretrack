@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { attachUser } from "./middleware";
 
 const app = express();
 
@@ -21,6 +22,8 @@ app.use(session({
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   },
 }));
+
+app.use(attachUser);
 
 app.use((req, res, next) => {
   const start = Date.now();

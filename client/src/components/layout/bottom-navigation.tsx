@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Home, Users, FileText, BarChart2, CheckSquare, Heart, Search } from "lucide-react";
+import { Home, Users, FileText, BarChart2, CheckSquare, Heart, Search, Shield } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import ClockButton from "../clock/clock-button";
 
@@ -26,8 +26,17 @@ export default function BottomNavigation() {
     { path: "/notes", icon: FileText, label: "Notes" },
   ];
 
-  const navItems = user?.role === "family" ? familyNav : caregiverNav;
-  const showClockButton = user?.role !== "family";
+  const adminNav = [
+    { path: "/", icon: Home, label: "Home" },
+    { path: "/admin", icon: Shield, label: "Admin" },
+    { path: "/clients", icon: Users, label: "Clients" },
+    { path: "/marketplace", icon: Search, label: "Market" },
+  ];
+
+  const navItems = user?.role === "platform_admin" ? adminNav
+    : user?.role === "family" ? familyNav
+    : caregiverNav;
+  const showClockButton = user?.role === "caregiver" || user?.role === "independent_caregiver";
   const leftItems = showClockButton ? navItems.slice(0, 2) : navItems;
   const rightItems = showClockButton ? navItems.slice(2) : [];
 
