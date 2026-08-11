@@ -65,7 +65,7 @@ Return a JSON array of tasks with this exact structure:
 Generate 6-10 tasks. Total estimated time should roughly match the shift duration. Return only the JSON array, no other text.`;
 
   const response = await groq.chat.completions.create({
-    model: "llama3-70b-8192",
+    model: "openai/gpt-oss-120b",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.4,
     max_tokens: 1024,
@@ -142,7 +142,7 @@ Include:
 Return only the JSON, no other text.`;
 
   const response = await groq.chat.completions.create({
-    model: "llama3-70b-8192",
+    model: "openai/gpt-oss-120b",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.5,
     max_tokens: 2048,
@@ -174,7 +174,7 @@ export async function generateCarePlan(client: Client): Promise<AiCarePlan> {
 
   const [goalsResponse, nutrition] = await Promise.all([
     groq.chat.completions.create({
-      model: "llama3-70b-8192",
+      model: "openai/gpt-oss-120b",
       messages: [{
         role: "user",
         content: `You are a compassionate care advisor helping a family improve their loved one's quality of life at home.
@@ -238,7 +238,7 @@ export async function getDailyHealthTip(conditions: string[]): Promise<string> {
 Keep it to 2 sentences. Plain language. Specific and actionable. No medical disclaimers. Return only the tip text.`;
 
   const response = await groq.chat.completions.create({
-    model: "llama3-8b-8192",
+    model: "openai/gpt-oss-20b",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
     max_tokens: 128,
