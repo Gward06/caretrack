@@ -13,6 +13,11 @@ app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Public healthcheck — no auth, no DB dependency. Used by Railway's healthcheckPath.
+app.get("/api/health", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
 app.use(session({
   secret: process.env.SESSION_SECRET || "caretrack-dev-secret-change-in-prod",
   resave: false,
